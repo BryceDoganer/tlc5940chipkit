@@ -46,6 +46,7 @@ class LEDCube
 	int updateInProgress(void);
 
 #if RGB_LEDS
+	void setVoxelSpectrumColor(int layer, int channel, int color);
 	void setAllRGB(int red, int green, int blue);
 	void setAllRGBOnLayer(int layer, int red, int green, int blue);
 	void setRGB(int layer, int channel, int r, int g, int b);
@@ -70,7 +71,11 @@ class LEDCube
 #endif
 
   private:
-	void request_xlat_pulse();
+	void request_xlat_pulse(void);
+
+	#if RGB_LEDS
+		void loadColorData(void);
+	#endif
 
 };
 

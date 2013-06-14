@@ -95,14 +95,14 @@ http://playground.arduino.cc/learning/TLC5940
 #if RGB_LEDS
 
     // Number of colors in each LED
-    #ifndef
+    #ifndef LED_SIZE
 	   #define LED_SIZE   3
     #endif
 
 	// Ensures only a combination of max two colors are on at once. 
 	// If all three colors are told to be set at once it will adjust. 
     // This ensures you get all the necessary colors while limiting current
-    #ifndef
+    #ifndef LIMIT_CURRENT
 	   #define LIMIT_CURRENT    1 
     #endif
 
@@ -110,6 +110,18 @@ http://playground.arduino.cc/learning/TLC5940
 	#ifndef RGB_CHANNELS 
     	#define RGB_CHANNELS  NUM_CHANNELS / LED_SIZE
 	#endif
+
+    #ifndef NUM_COLORS
+        // This will setup a color spectrum array for faster loading of color data
+        // Because each output has 4096 steps. We are going to make a color spectrum
+        // which steps through every color with max colors of 12288. 
+        // This number should divide evenly into the array.
+        #define NUM_COLORS 768 // 768 is already a large array, don't go much larger
+
+        // #if NUM_COLORS > 12288
+        //     #define NUM_COLORS 12288
+        // #endif
+    #endif
 
 #else
 	// Single color LEDs are size of 1
