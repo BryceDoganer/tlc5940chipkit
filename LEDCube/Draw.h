@@ -21,7 +21,8 @@ http://playground.arduino.cc/learning/TLC5940
 
 #ifndef DRAW_H
 #define DRAW_H
-#include <LEDCube.h>
+#include "LEDCube.h"
+#include <math.h>
 
 
 class Draw
@@ -54,7 +55,6 @@ class Draw
 		void increaseRGBSpectrum(int x, int y, int z, int amount);
 		void increaseRGBSpectrumForLayer(int layer, int amount);
 		void increaseRGBSpectrumAll(int amount);
-		int getMaxSpectrum(void);
 		unsigned char spectrumOutOfRange(int spectrum);
 		unsigned char outOfRGBSpectrum(int red, int green, int blue);
 		int spectrumFromRGB(int red, int green, int blue);

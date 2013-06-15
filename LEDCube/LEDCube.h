@@ -23,7 +23,6 @@ http://playground.arduino.cc/learning/TLC5940
 #define LEDCUBE_H
 #include <LEDCube_config.h>
 #include <stdint.h>
-#include <math.h>
 
 //extern unsigned int tlc_GSData[NUM_TLCS * 6];
 
@@ -39,21 +38,21 @@ class LEDCube
 	int getCurrentLayer(void);
 	int getNextLayer(void);
 	void stepLayer(void);
-	void set(int layer, int channel, int value);
+	void set(int channel, int layer, int value);
 	void setAll(int value);
 	int getNumTLCs();
-	int get(int layer, int channel);
+	int get(int channel, int layer);
 	int updateInProgress(void);
 
 #if RGB_LEDS
-	void setVoxelSpectrumColor(int layer, int channel, int color);
+	void setVoxelSpectrumColor(int channel, int layer, int color);
 	void setAllRGB(int red, int green, int blue);
 	void setAllRGBOnLayer(int layer, int red, int green, int blue);
-	void setRGB(int layer, int channel, int r, int g, int b);
-	void setRGB2(int layer, int channel, int r, int g, int b);
-	int getRed(int layer, int channel);
-	int getGreen(int layer, int channel);
-	int getBlue(int layer, int channel);
+	void setRGB(int channel, int layer, int r, int g, int b);
+	void setRGB2(int channel, int layer, int r, int g, int b);
+	int getRed(int channel, int layer);
+	int getGreen(int channel, int layer);
+	int getBlue(int channel, int layer);
 #endif
 	
 #if VPRG_ENABLED
@@ -72,11 +71,6 @@ class LEDCube
 
   private:
 	void request_xlat_pulse(void);
-
-	#if RGB_LEDS
-		void loadColorData(void);
-	#endif
-
 };
 
 // for the preinstantiated Cube variable.

@@ -112,15 +112,10 @@ http://playground.arduino.cc/learning/TLC5940
 // chipKit Uno32: 16K SRAM
 // chipKit uC32: 32K SRAM
 
-// Creates a 2D Array which will hold all the required values of every LED 
+// Creates an Array which will hold all the required values of every LED 
 // Each layer holds the required number of bits for the TLC5940's  
 // 12 TLCS with 8 layers: 2.25KB Array
 unsigned int cube_GSData[CUBE_SIZE][NUM_TLCS * 6]; // 6 * 32 = 192 bits = 16x 12bit values
-
-#if RGB_LEDS
-	// 768 colors: 3.375KB Array
-	unsigned int cube_colorData[(NUM_COLORS * 36) / 32]; // Colors * 36bits per color / 32 bits per data type
-#endif
 
 #if VPRG_ENABLED
 	// Packed Dot Correction data. Packed similarly to GSData. 
@@ -129,7 +124,7 @@ unsigned int cube_GSData[CUBE_SIZE][NUM_TLCS * 6]; // 6 * 32 = 192 bits = 16x 12
 #endif 
 
 // This keeps track of the current layer the cube is displaying 
-uint8_t currentLayer = 0;
+unsigned int currentLayer = 0;
 
 // This will be true (!= 0) if update was just called and the data has not
 // been latched in yet.
@@ -163,11 +158,6 @@ void LEDCube::init(int initialValue)
 
     TRISE |= 0xFF;
     PORTE |= 0xFF;
-
-    #if RGB_LEDS
-    	loadColorData();
-    #endif
-
 
 	#if DATA_TRANSFER_MODE == TLC_BITBANG
 
@@ -218,7 +208,7 @@ void LEDCube::clearAll(void)
 {
 	for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
 		for(int _data = 0; _data < (NUM_TLCS * 6); _data++) {
-			cube_GSData[_layer][_data] = 0x0;
+					cube_GSData[_layer][_data] = 0x0;
 		}
 	}
 }
@@ -456,10 +446,10 @@ void LEDCube::stepLayer(void)
            channel 0, OUT0 of the next TLC is channel 16, etc.
     \param value (0-4095).  The grayscale value, 4095 is maximum.
     \see get */
-void LEDCube::set(int layer, int channel, int value)
+void LEDCube::set(int channel, int layer, int value)
 {
 	if ((layer < 0) || (layer >= CUBE_SIZE)) return;
-	if ((channel < 0) || (channel >= NUM_TLCS*16)) return;
+	if ((channel < 0) || (channel >= NUM_TLCS * 16)) return;
 	if ((value < 0) || (value > 4095)) return;
 
 	// Data is packed into cube_GSData as pictured below. 
@@ -534,8 +524,8 @@ void LEDCube::set(int layer, int channel, int value)
 // There is most certainly a faster way to do this, but this will work for now
 void LEDCube::setAll(int value){
 	for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
-		for (int _data = 0; _data < NUM_TLCS * 6; _data++){
-		       set(_layer, _data, value);
+		for (int _channel = 0; _channel < NUM_TLCS * 6; _channel++){
+		       set(_channel, _layer, value);
 		}
 	}
 }
@@ -546,7 +536,7 @@ int LEDCube::getNumTLCs() {
 
 
 /** The logic here is almost identical to the set function which is well documented */
-int LEDCube::get(int layer, int channel) {
+int LEDCube::get(int channel, int layer) {
 
 	unsigned int index32 = (NUM_TLCS * 16 - 1) - channel;
 	unsigned int *index12p = cube_GSData[layer] + ((index32 * 3) >> 3);
@@ -590,77 +580,101 @@ int LEDCube::get(int layer, int channel) {
 
 // RGB Helper functions
 #if RGB_LEDS
-void LEDCube::setVoxelSpectrumColor(int layer, int channel, int color) {
+void LEDCube::setVoxelSpectrumColor(int channel, int layer, int color) {
 	if((layer < 0) || (layer >= CUBE_SIZE)) return;
 	if((channel < 0) || (channel >= RGB_CHANNELS)) return;
 	if((color < 0) || (layer >= NUM_COLORS)) return;
 
+	unsigned int red, green, blue;
+
+	if (color == 0) {
+	    red =  0;                 // Color 0 will turn LED off
+	  green =  0;
+	   blue =  0;
+	} else if (color <= 4095) {
+      red   = 4095 - color;            // red goes from on to off
+      green = color;                   // green goes from off to on
+      blue  = 0;                       // blue is always off
+    } else if (color <= 8191) {
+      red   =  0;                      // red is always off
+      green =  4095 - (color - 4096);  // green on to off
+      blue  =  color - 4096;           // blue off to on
+    } else if (color <= 12287) {  
+      red   =  color - 8192;           // red off to on
+      green =  0;                      // green is always off
+      blue  =  4095 - (color - 8192);  // blue on to off
+    }
+
 	unsigned int index32 = (RGB_CHANNELS - 1) - channel;
-	unsigned int color32 = color;
 
 	// index36p = index32 * 9 / 8 = the index into cube_GSData 
 	// where a 32-bit elment exists that will hold part our 36-bit value
-	unsigned int *index36p = cube_GSData[layer] + ((index32 * 9) >> 3);
-	unsigned int *color36p = cube_colorData + ((color * 9) >> 3);
+	unsigned int *index36p = cube_GSData[layer]+ ((index32 * 9) >> 3);
 
 	// caseNum  = index32 mod 8 = which of the 8 possible cases we need to handle
 	int caseNum = index32 % 8;
 
-		switch(caseNum) { 
-
+		switch(caseNum) {
 			case 0:	// A:
-				*index36p = (*index36p & 0x00000000) | *color36p;
-				color36p++; index36p++;
-				*index36p = (*index36p & 0x0FFFFFFF) | *color36p << 28;
+
+				*index36p = ((*index36p & 0x00000000) | red << 20 | green << 8 | blue >> 4);
+				index36p++;
+				*index36p = ((*index36p & 0x0FFFFFFF) | blue << 28);
 				break;
 			case 1:	// B:
-				*index36p = (*index36p & 0xF0000000) | *color36p >> 4 ;
-				color36p++; index36p++;
-				*index36p = (*index36p & 0x00FFFFFF) | *color36p << 24;
+
+				*index36p = ((*index36p & 0xF0000000) | red << 16 | green << 4 | blue >> 8);
+				index36p++;
+				*index36p = ((*index36p & 0x00FFFFFF) | blue << 24);
 				break;
 			case 2:	// C:
-				*index36p = (*index36p & 0xFF000000) | *color36p >> 8 ;
-				color36p++; index36p++;
-				*index36p = (*index36p & 0x000FFFFF) | *color36p << 20;
+
+				*index36p = ((*index36p & 0xFF000000) | red << 12 | green);
+				index36p++;
+				*index36p = ((*index36p & 0x000FFFFF) | blue << 20);
 				break;
 			case 3:	// D:
-				*index36p = (*index36p & 0xFFF00000) | *color36p >> 12 ;
-				color36p++; index36p++;
-				*index36p = (*index36p & 0x0000FFFF) | *color36p << 16;
+
+				*index36p = ((*index36p & 0xFFF00000) | red << 8 | green >> 4);
+				index36p++;
+				*index36p = ((*index36p & 0x0000FFFF) | green << 28 | blue << 16);		
 				break;
 			case 4: // E:
-				*index36p = (*index36p & 0xFFFF0000) | *color36p >> 16 ;
-				color36p++; index36p++;
-				*index36p = (*index36p & 0x00000FFF) | *color36p << 12;
+
+				*index36p = ((*index36p & 0xFFFF0000) | red << 4 | green >> 8);
+				index36p++;
+				*index36p = ((*index36p & 0x00000FFF) | green << 24 | blue << 12);
 				break;
 			case 5:	// F:
-				*index36p = (*index36p & 0xFFFFF000) | *color36p >> 20 ;
-				color36p++; index36p++;
-				*index36p = (*index36p & 0x000000FF) | *color36p << 8;
+
+				*index36p = ((*index36p & 0xFFFFF000) | red);
+				index36p++;
+				*index36p = ((*index36p & 0x000000FF) | green << 20 | blue << 8);
 				break;
 			case 6:	// G:
-				*index36p = (*index36p & 0xFFFFFF00) | *color36p >> 24 ;
-				color36p++; index36p++;
-				*index36p = (*index36p & 0x0000000F) | *color36p << 4;
+
+				*index36p = ((*index36p & 0xFFFFFF00) | red >> 4);
+				index36p++;
+				*index36p = ((*index36p & 0x0000000F) | red << 28 | green << 16 | blue << 4);
 				break;
 			case 7:	// H:
-				*index36p = (*index36p & 0xFFFFFFF0) | *color36p >> 28 ;
-				color36p++; index36p++;
-				*index36p = (*index36p & 0x00000000) | *color36p;
-				break;
-			}
 
+				*index36p = ((*index36p & 0xFFFFFFF0) | red >> 8);
+				index36p++;
+				*index36p = ((*index36p & 0x00000000) | red << 24 | green << 12 | blue);
+				break;
+		}
 }
 
 void LEDCube::setAllRGB(int red, int green, int blue){
 	for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
-		for (int _channel = 0; _channel < RGB_CHANNELS; _channel++){
+		for (int _channel = 0; _channel < RGB_CHANNELS; _channel++) {
 		       setRGB(_layer, _channel, red, green, blue);
 		}
 	}
 }
 
-void LEDCube::setAllRGBOnLayer(int layer, int red, int green, int blue){
+void LEDCube::setAllRGBOnLayer(int layer, int red, int green, int blue) {
 		for (int _channel = 0; _channel < RGB_CHANNELS; _channel++){
 		       setRGB(layer, _channel, red, green, blue);
 		}
@@ -668,161 +682,44 @@ void LEDCube::setAllRGBOnLayer(int layer, int red, int green, int blue){
 
 // RGB LEDs are connected to the TLC sequentially
 // i.e. ch 0 = B1, ch 1 = G1, ch 2 = R1, ch 3 = B2, ch 4 = G2, ch 5 = R2
-void LEDCube::setRGB(int layer, int channel, int r, int g, int b){
+void LEDCube::setRGB(int channel, int layer, int r, int g, int b) {
 	int tlc_channel = channel * 3;
 
-	set(layer, tlc_channel++, b);
-	set(layer, tlc_channel++, g);
-	set(layer, tlc_channel, r);
+	set(tlc_channel++, layer, b);
+	set(tlc_channel++, layer, g);
+	set(tlc_channel, layer, r);
 }
 
 // Each RGB LED is connected to multiple TLCs.
 // i.e. ch 0 = R1, ch 1 = R2, ch 16 = G1, ch 17 = G2, ch 32 = B1, ch 33 = B2
-void LEDCube::setRGB2(int layer, int channel, int r, int g, int b){
+void LEDCube::setRGB2(int channel, int layer, int r, int g, int b){
 
 	int tlc_channel = channel / 16 * 48 + channel % 16;
 
-	set(layer, tlc_channel, r);
+	set(tlc_channel, layer, r);
 	tlc_channel += 16;
-	set(layer, tlc_channel, g);
+	set(tlc_channel, layer, g);
 	tlc_channel += 16;
-	set(layer, tlc_channel, b);
+	set(tlc_channel, layer, b);
 }
 
-int LEDCube::getRed(int layer, int channel) {
+int LEDCube::getRed(int channel, int layer) {
 	int tlc_channel = ((channel * 3) + 2);
-	return get(layer, tlc_channel);
+	return get(tlc_channel, layer);
 }
 
-int LEDCube::getGreen(int layer, int channel) {
+int LEDCube::getGreen(int channel, int layer) {
 	int tlc_channel = ((channel * 3) + 1);
-	return get(layer, tlc_channel);
+	return get(tlc_channel, layer);
 }
 
-int LEDCube::getBlue(int layer, int channel) {
+int LEDCube::getBlue(int channel, int layer) {
 	int tlc_channel = (channel * 3);
-	return get(layer, tlc_channel);
+	return get(tlc_channel, layer);
 }
-
-void LEDCube::loadColorData() {
-
-// Data is packed into cube_colorData[] like cube_GSData[] above 
-// Each letter represents 4 bits and the last channel is stored first. 
-// So |A|A|A| would be the 12-bit value of the last TLC channel
-// 
-// As picture below, there are 8 possible positions for the 36-bit value to be stored in the array (Cases A-H)
-//	               ________________________________________________________________________________
-//  Channel data: |A|A|A|A|A|A|A|A|A|B|B|B|B|B|B|B|B|B|C|C|C|C|C|C|C|C|C|D|D|D|D|D|D|D|D|D|E|E|E|E|
-// 32-bit borders |‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|
-//                 ________________________________________________________________
-//  Channel data: |E|E|E|E|E|F|F|F|F|F|F|F|F|F|G|G|G|G|G|G|G|G|G|H|H|H|H|H|H|H|H|H|
-// 32-bit borders |‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|
-
-	unsigned int red, green, blue;
-	unsigned int *color36p = cube_colorData;
-	int colorNum = 0;
-
-	for(int i = 0; i < 12288; i += (12288 / NUM_COLORS)) {
-			if (i == 0) {
-				red = 0;                 // Color 0 will turn LED off
-				green = 0;
-				blue = 0;
-			} else if (i <= 4095) {
-		      red = 4095 - i;            // red goes from on to off
-		      green = i;                 // green goes from off to on
-		      blue = 0;                  // blue is always off
-		    } else if (i <= 8191) {
-		      red = 0;                    // red is always off
-		      green = 4095 - (i - 4096);  // green on to off
-		      blue = (i - 4096);          // blue off to on
-		    } else {  // > 8191
-		      red = (i - 8192);          // red off to on
-		      green = 0;                 // green is always off
-		      blue = 4095 - (i - 8192);  // blue on to off
-		    }
-
-		switch(colorNum % 8){
-			case 0:	// B: First 12 bit color starts 0 bits into the element
-
-				// zero out the 12 bits and OR those bits with the value
-				*color36p = (*color36p & 0x000FFFFF) | red << 20;
-				*color36p = (*color36p & 0xFFF000FF) | green << 8;
-				*color36p = (*color36p & 0xFFFFFF00) | blue >> 4;
-				color36p++;
-				*color36p = (*color36p & 0x0FFFFFF) | blue << 28;
-				break;
-			case 1:	// B: First 12 bit color starts 4 bits into the element
-
-				// zero out the 12 bits and OR those bits with the value
-				*color36p = (*color36p & 0xF000FFFF) | red << 16;
-				*color36p = (*color36p & 0xFFFF000F) | green << 4;
-				*color36p = (*color36p & 0xFFFFFFF0) | blue >> 8;
-				color36p++;
-				*color36p = (*color36p & 0x00FFFFFF) | blue << 24;
-				break;
-			case 2:	// C: First 12 bit color starts  bits into the element
-
-				// zero out the 12 bits and OR those bits with the value
-				*color36p = (*color36p & 0xFF000FFF) | red << 12;
-				*color36p = (*color36p & 0xFFFFF000) | green;
-				color36p++;
-				*color36p = (*color36p & 0x000FFFFF) | blue << 20;
-				break;
-			case 3:	// D: First 12 bit color starts  bits into the element
-
-				// zero out the 12 bits and OR those bits with the value
-				*color36p = (*color36p & 0xFFF000FF) | red << 8;
-				*color36p = (*color36p & 0xFFFFFF00) | green >> 4;
-				color36p++;
-				*color36p = (*color36p & 0x0FFFFFFF) | green << 28;
-				*color36p = (*color36p & 0xF000FFFF) | blue << 16;			
-				break;
-			case 4: // E: First 12 bit color starts  bits into the element
-
-				// zero out the 12 bits and OR those bits with the value
-				*color36p = (*color36p & 0xFFFF000F) | red << 4;
-				*color36p = (*color36p & 0xFFFFFFF0) | green >> 8;
-				color36p++;
-				*color36p = (*color36p & 0x00FFFFFF) | green << 24;
-				*color36p = (*color36p & 0xFF000FFF) | blue << 12;	
-				break;
-			case 5:	// F: First 12 bit color starts  bits into the element
-
-				// zero out the 12 bits and OR those bits with the value
-				*color36p = (*color36p & 0xFFFFF000) | red;
-				*color36p = (*color36p & 0x000FFFFF) | green << 20;
-				color36p++;
-				*color36p = (*color36p & 0xFFF000FF) | blue << 8;
-				break;
-			case 6:	// G: First 12 bit color starts  bits into the element
-
-				// zero out the 12 bits and OR those bits with the value
-				*color36p = (*color36p & 0xFFFFFF00) | red >> 4;
-				color36p++;
-				*color36p = (*color36p & 0x0FFFFFFF) | red << 28;
-				*color36p = (*color36p & 0xF000FFFF) | green << 16;
-				*color36p = (*color36p & 0xFFFF000F) | blue << 4;
-				break;
-			case 7:	// H: First 12 bit color starts  bits into the element
-
-				// zero out the 12 bits and OR those bits with the value
-				*color36p = (*color36p & 0xFFFFFFF0) | red >> 8;
-				color36p++;
-				*color36p = (*color36p & 0x00FFFFFF) | red << 24;
-				*color36p = (*color36p & 0xFF000FFF) | green << 12;
-				*color36p = (*color36p & 0xFFFFF000) | blue;
-				break;
-
-			colorNum++;
-		}
-	}
-}
-
 
 #endif 
 // End of RGB functions
-
-
 
 
 #if VPRG_ENABLED

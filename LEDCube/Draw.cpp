@@ -19,7 +19,7 @@ http://www.ti.com/lit/ds/symlink/tlc5940.pdf
 http://playground.arduino.cc/learning/TLC5940
 ******************************************************************************/
 
-#include <Draw.h>
+#include "Draw.h"
 
 void Draw::clearAll(void) {
 	 Cube.clearAll();
@@ -52,7 +52,7 @@ void Draw::clearPlaneX(int x) {
   if (x >= 0 && x < CUBE_SIZE) {
     for(int z = 0; z < CUBE_SIZE; z++) {
           for (int c = (x * CUBE_SIZE); c < ((x * CUBE_SIZE) + CUBE_SIZE); c++) {
-            Cube.setRGB(z, c, 0, 0, 0); 
+            Cube.setRGB(c, z, 0, 0, 0); 
           }
      }
   }
@@ -63,7 +63,7 @@ void Draw::clearPlaneY(int y) {
   if (y >= 0 && y < CUBE_SIZE) {
     for(int z = 0; z < CUBE_SIZE; z++) {
           for (int c = y; c < RGB_CHANNELS; c += CUBE_SIZE) {
-            Cube.setRGB(z, c, 0, 0, 0); 
+            Cube.setRGB(c, z, 0, 0, 0); 
           }
      }
   }
@@ -73,7 +73,7 @@ void Draw::clearPlaneY(int y) {
 void Draw::clearPlaneZ(int z) {
   if (z >= 0 && z < CUBE_SIZE) {
       for (int c = 0; c < RGB_CHANNELS; c++) {
-        Cube.setRGB(z, c, 0, 0, 0); 
+        Cube.setRGB(c, z, 0, 0, 0); 
       }
   }
 }
@@ -88,10 +88,10 @@ void Draw::shiftCubeX(int direction) {
       for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
         for(int _channel = (NUM_CHANNELS - 1); _channel >= 0; _channel--) {
           if(_channel > ((CUBE_SIZE * LED_SIZE) - 1)) {
-            Cube.set(_layer, _channel, Cube.get(_layer, (_channel - (CUBE_SIZE * LED_SIZE))));
+            Cube.set(_channel, _layer, Cube.get((_channel - (CUBE_SIZE * LED_SIZE)), _layer));
           } else {
             // Clear the final X Plane
-            Cube.set(_layer, _channel, 0);
+            Cube.set(_channel, _layer, 0);
           } 
         }
       }
@@ -100,10 +100,10 @@ void Draw::shiftCubeX(int direction) {
       for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
         for(int _channel = 0; _channel < NUM_CHANNELS; _channel++) {
           if(_channel < (NUM_CHANNELS - (CUBE_SIZE * LED_SIZE))) {
-            Cube.set(_layer, _channel, Cube.get(_layer, (_channel + (CUBE_SIZE * LED_SIZE))));
+            Cube.set(_channel, _layer, Cube.get((_channel + (CUBE_SIZE * LED_SIZE)), _layer));
           } else {
             // Clear the final X Plane
-            Cube.set(_layer, _channel, 0);
+            Cube.set(_channel, _layer,  0);
           }
         }
       }
@@ -120,12 +120,12 @@ void Draw::shiftCubeY(int direction) {
         for(int _channel = NUM_CHANNELS - 1; _channel >= 0; _channel --) {
           if(((_channel - (LED_SIZE - 1)) % (CUBE_SIZE * LED_SIZE)) == 0) {
             for(int i = 0; i < LED_SIZE; i++) {
-              Cube.set(_layer, _channel, 0); // Clear final Y Layer
+              Cube.set(_channel, _layer, 0); // Clear final Y Layer
               _channel--;
             } 
             _channel++;
           } else {
-            Cube.set(_layer, _channel, Cube.get(_layer, _channel - (1 * LED_SIZE)));
+            Cube.set(_channel, _layer, Cube.get(_channel - (1 * LED_SIZE), _layer));
           } 
         }
       }
@@ -135,12 +135,12 @@ void Draw::shiftCubeY(int direction) {
         for(int _channel = 0; _channel < NUM_CHANNELS; _channel ++) {
           if(((_channel + LED_SIZE) % (CUBE_SIZE * LED_SIZE)) == 0) {
             for(int i = 0; i < LED_SIZE; i++) {
-              Cube.set(_layer, _channel, 0); // Clear final Y Layer
+              Cube.set(_channel, _layer, 0); // Clear final Y Layer
               _channel++;
             } 
             _channel--;
           } else {
-            Cube.set(_layer, _channel, Cube.get(_layer, _channel + (1 * LED_SIZE)));
+            Cube.set(_channel, _layer, Cube.get(_channel + (1 * LED_SIZE), _layer));
           }
         }
       }
@@ -156,9 +156,9 @@ void Draw::shiftCubeZ(int direction) {
       for(int _layer = CUBE_SIZE - 1; _layer >= 0; _layer--) {
         for(int _channel = 0; _channel < NUM_CHANNELS; _channel ++) {
           if(_layer == 0) {
-            Cube.set(_layer, _channel, 0); // Clear final Z Layer 
+            Cube.set(_channel, _layer, 0); // Clear final Z Layer 
           } else {
-            Cube.set(_layer, _channel, Cube.get((_layer - 1), _channel));
+            Cube.set(_channel, _layer, Cube.get(_channel, (_layer - 1)));
           }
         }
       }
@@ -167,9 +167,9 @@ void Draw::shiftCubeZ(int direction) {
       for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
         for(int _channel = 0; _channel < NUM_CHANNELS; _channel ++) {
           if(_layer == (CUBE_SIZE - 1)) {
-            Cube.set(_layer, _channel, 0); // Clear final Z Layer 
+            Cube.set(_channel, _layer, 0); // Clear final Z Layer 
           } else {
-            Cube.set(_layer, _channel, Cube.get((_layer + 1), _channel));
+            Cube.set(_channel, _layer, Cube.get(_channel, (_layer + 1)));
           }
         }
       }
@@ -181,157 +181,91 @@ void Draw::shiftCubeZ(int direction) {
 // RGB LED Functions:
 #if RGB_LEDS
 
-int cube_SpectrumData[CUBE_SIZE][RGB_CHANNELS];
+int spectrumStepCount = 0;
 
 // Set a single voxel to ON
 void Draw::setRGBVoxel(int x, int y, int z, int red, int green, int blue) {
   if (coordOutOfRange(x,y,z)) return;
   if (RGBIntensityOutOfRange(red, green, blue)) return;
-
-
-#if LIMIT_CURRENT 
-  if(outOfRGBSpectrum(red, green, blue)) {
-   // setRGBVoxelSpectrum(x, y, z, reduceRGBToSpectrum(red, green, blue));
-    Cube.setRGB(z, RGBChannel(x,y), red, green, blue); 
-  } else {
-    Cube.setRGB(z, RGBChannel(x,y), red, green, blue); 
-  }
-#else
-   // setRGB(layer, channel, r, g, b);
-   Cube.setRGB(z, RGBChannel(x,y), red, green, blue); 
-#endif    
+  Cube.setRGB(RGBChannel(x,y), z, red, green, blue);  
 }
 
-
+// TODO FIX THIS:
 // Set a single voxel to OFF
 void Draw::clearRGBVoxel(int x, int y, int z) {
   if (coordOutOfRange(x,y,z)) return;
-
-  // setRGB(layer, channel, r, g, b);
-  Cube.setRGB(z, RGBChannel(x,y), 0, 0, 0);  
+  Cube.setVoxelSpectrumColor(RGBChannel(x,y), z, 0);  
 }
 
 void Draw::setRGBVoxelSpectrum(int x, int y, int z, int spectrum) {
-    if (spectrum == 0) {
-       setRGBVoxel(x, y, z, 0, 0, 0);
-       return;
-    }
-
-    if (spectrumOutOfRange(spectrum)) return; //12288 spectrum colors
+    if (spectrumOutOfRange(spectrum)) return;
     if (coordOutOfRange(x,y,z)) return;
-
-    int red, green, blue;
-
-    //cube_SpectrumData[z][RGBChannel(x,y)] = spectrum;
-    spectrum--;
-
-    if (spectrum <= 4095)
-    {
-      red = 4095 - spectrum;            // red goes from on to off
-      green = spectrum;                 // green goes from off to on
-      blue = 0;                         // blue is always off
-    }
-    else if (spectrum <= 8191)  
-    {
-      red = 0;                          // red is always off
-      green = 4095 - (spectrum - 4096); // green on to off
-      blue = (spectrum - 4096);         // blue off to on
-    }
-    else // spectrum > 8191
-    {
-      red = (spectrum - 8192);         // red off to on
-      green = 0;                       // green is always off
-      blue = 4095 - (spectrum - 8192); // blue on to off
-    }
-    
-    setRGBVoxel(x, y, z, red, green, blue);  
+    Cube.setVoxelSpectrumColor(RGBChannel(x,y), z, spectrum);
 }
 
 void Draw::setRGBSpectrumForLayer(int layer, int spectrum) {
       for (int _x = 0; _x < CUBE_SIZE; _x++) {
         for(int _y = 0; _y < CUBE_SIZE; _y++) {
-          setRGBVoxelSpectrum(_x, _y, layer, spectrum);
+          Cube.setVoxelSpectrumColor(RGBChannel(_x,_y), layer, spectrum);
         }
       }
 }
 
 void Draw::setRGBSpectrumAll(int spectrum) {
       for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
-          setRGBSpectrumForLayer(_layer, spectrum);
-      }
-  
+              setRGBSpectrumForLayer(_layer, spectrum);
+      }  
 }
-
-int Draw::getRGBVoxelSpectrum(int x, int y, int z) {
-    if (coordOutOfRange(x,y,z)) return -1;
-
-    int _red, _green, _blue;
-  
-    _red   = Cube.getRed(z, RGBChannel(x,y));
-    _green = Cube.getGreen(z, RGBChannel(x,y));
-    _blue  = Cube.getBlue(z, RGBChannel(x,y));
-
-    int _spectrum = 0;
-
-    if ((_red == _green) && (_green == _blue)) return _spectrum; // LED is most likely off
-
-    if ((_blue == 0) && (_red != 0)) {
-             _spectrum = _green; // spectrum from 0 to 4095
-
-    } else if ((_red == 0) && (_green != 0)) {
-      _spectrum = _blue + 4096; // spectrum from 4096 to 8191
-
-    } else {
-      _spectrum = _red + 8192; // spectrum from 8192 to 12287
-    }
-  
-    _spectrum++; //For Data storage
-    return _spectrum;
-
-//   return cube_SpectrumData[z][RGBChannel(x,y)];
-}
-
 
 void Draw::increaseRGBSpectrum(int x, int y, int z, int amount) {
-    int _spectrum = getRGBVoxelSpectrum(x, y, z);
-    //int _spectrum = cube_SpectrumData[z][RGBChannel(x,y)];
+    if(coordOutOfRange(x,y,z)) return;
 
-    if (_spectrum == 0) return;
-
-    _spectrum += amount;
-
-    if(spectrumOutOfRange(_spectrum)) {
-       _spectrum = _spectrum - getMaxSpectrum();
-    }
-
-    setRGBVoxelSpectrum(x, y, z, _spectrum);
+    spectrumStepCount += amount;
+    if (spectrumOutOfRange(spectrumStepCount)) spectrumStepCount -= NUM_COLORS;
+    if (spectrumStepCount == 0) spectrumStepCount++;
+  
+    Cube.setVoxelSpectrumColor(RGBChannel(x,y), z, spectrumStepCount);
 }
 
+//TODO Make this faster:
 void Draw::increaseRGBSpectrumForLayer(int layer, int amount) {
+    if(coordOutOfRange(0,0,layer)) return;
+
+    spectrumStepCount += amount;
+    if (spectrumOutOfRange(spectrumStepCount)) spectrumStepCount -= NUM_COLORS;
+    if (spectrumStepCount == 0) spectrumStepCount++;
+
     for (int _x = 0; _x < CUBE_SIZE; _x++) {
        for(int _y = 0; _y < CUBE_SIZE; _y++) {
-            increaseRGBSpectrum(_x, _y, layer, amount);
+            Cube.setVoxelSpectrumColor(RGBChannel(_x,_y), layer, spectrumStepCount);
        }
     }
 }
 
+//TODO Make this faster:
 void Draw::increaseRGBSpectrumAll(int amount) {
-    for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
-      increaseRGBSpectrumForLayer(_layer, amount);
+
+    spectrumStepCount += amount;
+    if (spectrumOutOfRange(spectrumStepCount)) spectrumStepCount -= NUM_COLORS;
+    if (spectrumStepCount == 0) spectrumStepCount++;
+
+    for(int _z = 0; _z < CUBE_SIZE; _z++) {
+        for (int _x = 0; _x < CUBE_SIZE; _x++) {
+           for(int _y = 0; _y < CUBE_SIZE; _y++) {
+                Cube.setVoxelSpectrumColor(RGBChannel(_x,_y), _z, spectrumStepCount);
+           }
+        }
     }
 }
 
-int Draw::getMaxSpectrum(void) {
-    return 12288; // 12288 total steps (Not including 0)
-}
-
 unsigned char Draw::spectrumOutOfRange(int spectrum) {
-    if ((spectrum > getMaxSpectrum()) || (spectrum < 0))
+    if ((spectrum >= NUM_COLORS) || (spectrum < 0))
       return 1;
     else 
       return 0;
 }
 
+//TODO Fix this:
 unsigned char Draw::outOfRGBSpectrum(int red, int green, int blue) {
   // The spectrum only keeps a combined total of 4095 between Red, Green and Blue
     if ((red + green + blue) < 4096)
@@ -340,62 +274,11 @@ unsigned char Draw::outOfRGBSpectrum(int red, int green, int blue) {
       return 1;
 }
 
-int Draw::reduceRGBToSpectrum(int red, int green, int blue) {
-  float _tmp;
-  int _red, _green, _blue;
-
-    if ((red == green) && (green == blue)) {
-      _red = 0;
-      _green = 0;
-      _blue = 0;
-
-    } else if ((red <= green) && (red <= blue)) {
-        _red = 0;
-        green -= red;
-        blue -= red; 
-
-        _tmp = green + blue;
-        _tmp = 4095.00 / _tmp;
-
-        _green = (int)(green *_tmp);
-        _blue = (int)(blue *_tmp);
-        // Most numbers will add up to 4094 after floating point is truncated
-        if((_green + _blue) != 4095) _green++; 
-
-    } else if ((green <= red) && (green <= blue)) {
-        _green = 0;
-        red -= green;
-        blue -= green; 
-
-        _tmp = red + blue;
-        _tmp = 4095.00 / _tmp;
-
-        _red = (int)(red *_tmp);
-        _blue = (int)(blue *_tmp);
-
-        if((_red + _blue) != 4095) _blue++; 
-
-    } else { // Blue is less than the others
-        _blue = 0;
-        red -= blue;
-        green -= blue; 
-
-        _tmp = red + green;
-        _tmp = 4095.00 / _tmp;
-
-        _red = (int)(red *_tmp);
-        _green = (int)(green *_tmp);
-
-        if((_red + _green) != 4095) _red++; 
-    } 
-
-    return spectrumFromRGB(_red, _green, _blue);
-}
-
+// TODO Fix this...
 int Draw::spectrumFromRGB(int red, int green, int blue) {
     int _spectrum = 0;
 
-    if ((red == green) && (green == blue)) return _spectrum; // LED is most likely off
+    if ((red == green) && (green == blue)) return 0; // LED is most likely off
 
     if ((blue == 0) && (red != 0)) {
              _spectrum = green; // spectrum from 0 to 4095
@@ -407,9 +290,7 @@ int Draw::spectrumFromRGB(int red, int green, int blue) {
       _spectrum = red + 8192; // spectrum from 8192 to 12287
     }
   
-    _spectrum++; //For Data storage
     return _spectrum;
-
 }
 
 
@@ -590,6 +471,24 @@ void Draw::drawLineRGBCube(int x, int y, int z, int orientation, int size, int r
     		z2 = z - size;
     		break;
     }
+
+    // for (int _z = z; _z <= z2; _z++) {
+    //   for (int _x = x; _x <= x2; _x++) {
+    //     for (int _y = y; _y <= y2; _y++) {
+
+    //         if( ((_x == y)  && (_x == z)) || ((_x == y) && (_x == z2)) || 
+    //             ((_x == y2) && (_x == z)) || ((_x == y2) && (_x == z2)) ) {
+    //                 setRGBVoxel(_x,_y,_z,  red, green, blue);
+    //          } else if ( ((_y == x)  && (_y == z)) || ((_y == x) && (_y == z2)) || 
+    //                      ((_y == x2) && (_y == z)) || ((_y == x2) && (_y == z2)) ) {
+    //                 setRGBVoxel(_x,_y,_z,  red, green, blue);
+    //          } else if ( ((_z == x)  && (_z == y)) || ((_z == x) && (_z == y2)) || 
+    //                      ((_z == x2) && (_z == y)) || ((_z == x2) && (_z == y2)) ) {
+    //                 setRGBVoxel(_x,_y,_z,  red, green, blue);
+    //          }
+    //     }
+    //   }
+    // }
 
   // Bottom Square
   drawRGBLine(x, y, z, x2, y, z, red, green, blue); // Forward Horizontal Bottom
@@ -861,7 +760,7 @@ void Draw::setRGBPlaneX(int x, int red, int green, int blue) {
   if (x >= 0 && x < CUBE_SIZE) {
 		for(int z = 0; z < CUBE_SIZE; z++) {
 			    for (int c = (x * CUBE_SIZE); c < ((x * CUBE_SIZE) + CUBE_SIZE); c++) {
-			      Cube.setRGB(z, c, red, green, blue); 
+			      Cube.setRGB(c, z, red, green, blue); 
 			    }
 		 }
   }
@@ -873,7 +772,7 @@ void Draw::setRGBPlaneY(int y, int red, int green, int blue) {
   if (y >= 0 && y < CUBE_SIZE) {
     for(int z = 0; z < CUBE_SIZE; z++) {
           for (int c = y; c < RGB_CHANNELS; c += CUBE_SIZE) {
-            Cube.setRGB(z, c, red, green, blue); 
+            Cube.setRGB(c, z, red, green, blue); 
           }
      }
   }
@@ -884,7 +783,7 @@ void Draw::setRGBPlaneZ(int z, int red, int green, int blue) {
   if (RGBIntensityOutOfRange(red, green, blue)) return;
   if (z >= 0 && z < CUBE_SIZE) {
       for (int c = 0; c < RGB_CHANNELS; c++) {
-        Cube.setRGB(z, c, red, green, blue); 
+        Cube.setRGB(c, z, red, green, blue); 
       }
   }
 }
