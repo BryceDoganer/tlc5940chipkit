@@ -82,9 +82,11 @@ http://playground.arduino.cc/learning/TLC5940
 	#define NUM_TLCS	12
 #endif
 
-#ifndef NUM_CHANNELS
-    #define NUM_CHANNELS  NUM_TLCS * 16 
-#endif
+#define NUM_CHANNELS  NUM_TLCS * 16 
+
+#define LAYER_GSDATA NUM_TLCS * 6
+
+#define GSDATA_SIZE CUBE_SIZE * LAYER_GSDATA // 6 * 32bit / 12bit = 16 channels per TLC
 
 // Is the cube made of RGB LEDs or Single Color?
 // Use this to include/exclude the RGB helper functions
@@ -95,29 +97,29 @@ http://playground.arduino.cc/learning/TLC5940
 #if RGB_LEDS
 
     // Number of colors in each LED
-    #ifndef LED_SIZE
-	   #define LED_SIZE   3
-    #endif
-
-	// Ensures only a combination of max two colors are on at once. 
-	// If all three colors are told to be set at once it will adjust. 
-    // This ensures you get all the necessary colors while limiting current
-    #ifndef LIMIT_CURRENT
-	   #define LIMIT_CURRENT    1 
-    #endif
+	#define LED_SIZE   3
 
 	// When setting RGB values this number is useful
-	#ifndef RGB_CHANNELS 
-    	#define RGB_CHANNELS  NUM_CHANNELS / LED_SIZE
-	#endif
+    #define RGB_CHANNELS  NUM_CHANNELS / LED_SIZE
 
-    #ifndef NUM_COLORS
+    // Turn this on or off to include to spectrum helper functions
+    #define RGB_SPECTRUM 1 
+
+    #if RGB_SPECTRUM
+        // Creates a 2D Array to keep track of spectrum data
+        // for animation objects
+        #define SPECTRUM_DATA_ARRAYS 2
+        #define SPECTRUM_DATA_VALUES 10
+    #endif
+
+    #if RGB_SPECTRUM
         #define NUM_COLORS 12288 
     #endif
 
 #else
 	// Single color LEDs are size of 1
 	#define LED_SIZE    1
+
 #endif
 
 // Bit-bang using any two i/o pins

@@ -112,10 +112,10 @@ http://playground.arduino.cc/learning/TLC5940
 // chipKit Uno32: 16K SRAM
 // chipKit uC32: 32K SRAM
 
-// Creates an Array which will hold all the required values of every LED 
-// Each layer holds the required number of bits for the TLC5940's  
-// 12 TLCS with 8 layers: 2.25KB Array
-unsigned int cube_GSData[CUBE_SIZE][NUM_TLCS * 6]; // 6 * 32 = 192 bits = 16x 12bit values
+// Creates an Array which will act like a 2D array to hold all the values of every LED 
+// Each layer holds the required number of bits 
+//for the TLC5940's 12 TLCS with 8 layers: 2.25KB Array
+unsigned int cube_GSData[GSDATA_SIZE]; // 6 * 32 = 192 bits = 16x 12bit values
 
 #if VPRG_ENABLED
 	// Packed Dot Correction data. Packed similarly to GSData. 
@@ -203,13 +203,17 @@ void LEDCube::init(int initialValue)
 
 }
 
-// Clears Data array. Call call upate() to clear on cube.
+unsigned int* LEDCube::getGSData(void) {
+	return cube_GSData;
+}
+//TODO: Test this function
+// Clears Data array. Call call update() to clear on cube.
 void LEDCube::clearAll(void)
 {
-	for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
-		for(int _data = 0; _data < (NUM_TLCS * 6); _data++) {
-					cube_GSData[_layer][_data] = 0x0;
-		}
+	unsigned int *gsData = cube_GSData;
+	unsigned int *gsDataEnd = gsData + GSDATA_SIZE;
+	while ( gsData != gsDataEnd ) {
+				*gsData = 0x0; gsData++;
 	}
 }
 
@@ -218,7 +222,7 @@ int LEDCube::clearLayer(int layer)
     if((layer < 0) || (layer >= CUBE_SIZE)) return 0;
 
     for(int _data = 0; _data < (NUM_TLCS * 6); _data++) {
-		cube_GSData[layer][_data] = 0x0;
+		cube_GSData[(CUBE_SIZE * layer) + _data] = 0x0;
 	}
 
 	return 1;
@@ -233,7 +237,7 @@ int LEDCube::update(void)
 	for(int i = 0; i < (NUM_TLCS * 6); i++) {
 		for(int s = 31; s >= 0; s--)
 		{
-			if(cube_GSData[currentLayer][i] >> s & 0x1) {
+			if(cube_GSData[(currentLayer * CUBE_SIZE) + i] >> s & 0x1) {
 				PORTGSET |= SOUT;
 			} else {
 				PORTGCLR |= SOUT;
@@ -259,7 +263,7 @@ int LEDCube::update(void)
 	pulse_pin(SCLK_PORT, SCLK);
 
 	//TODO use Interrupt driven SPI for a non-blocking performance boost - this could get tricky when mixed with DC updates
-	putsSPI2(6 * NUM_TLCS, cube_GSData[currentLayer]);
+	putsSPI2(LAYER_GSDATA, cube_GSData + (LAYER_GSDATA * currentLayer));
 
 	// Wait for buffers to be emptied
 	while(SpiChnIsBusy(SPI_CHANNEL2));
@@ -278,7 +282,7 @@ int LEDCube::startUpdate(void)
 	pulse_pin(SCLK_PORT, SCLK);
 
 	//TODO use Interrupt driven SPI for a non-blocking performance boost - this could get tricky when mixed with DC updates
-	putsSPI2(6 * NUM_TLCS, cube_GSData[currentLayer]);
+	putsSPI2(LAYER_GSDATA, cube_GSData + (LAYER_GSDATA * currentLayer));
 
 	return 0;
 }
@@ -392,54 +396,8 @@ void LEDCube::stepLayer(void)
 
     currentLayer++;
     if(currentLayer == CUBE_SIZE) currentLayer = 0;
-
-
-  // TRISE |= 0xFF; // Turn layer pins to inputs
-  // PORTE |= 0xFF; // Pull layer pins high
-
-  // while(cube_needXLAT) { };
-  
-  //  switch (currentLayer) {
-  //     case 0:
-  //       TRISE &= ~(0x01); // Turn the first layer pin to an output 
-  //       PORTE &= ~(0x01); // Pull first layer ping low
-  //       break;
-  //     case 1:
-  //       TRISE &= ~(0x02); // Turn the second layer pin to an output 
-  //       PORTE &= ~(0x02); // Pull second layer ping low
-  //       break;
-  //     case 2:
-  //       TRISE &= ~(0x04); // Turn the third layer pin to an output 
-  //       PORTE &= ~(0x04); // Pull third layer ping low
-  //       break;
-  //     case 3:
-  //       TRISE &= ~(0x08); // Turn the fourth layer pin to an output 
-  //       PORTE &= ~(0x08); // Pull fourth layer ping low
-  //       break;
-  //     case 4:
-  //       TRISE &= ~(0x10); // Turn the fifth layer pin to an output 
-  //       PORTE &= ~(0x10); // Pull fifth layer ping low
-  //       break;
-  //     case 5:
-  //       TRISE &= ~(0x20); // Turn the sixth layer pin to an output 
-  //       PORTE &= ~(0x20); // Pull sixth layer ping low
-  //       break;
-  //     case 6:
-  //       TRISE &= ~(0x40); // Turn the seventh layer pin to an output 
-  //       PORTE &= ~(0x40); // Pull seventh layer ping low
-  //       break;
-  //     case 7:
-  //       TRISE &= ~(0x80); // Turn the eighth layer pin to an output 
-  //       PORTE &= ~(0x80); // Pull eighth layer ping low
-  //       break;
-  //   }
-    
-  // currentLayer++;
-  // if(currentLayer == CUBE_SIZE) currentLayer = 0;
  
 } // End of stepLayer()
-
-
 
 /** Sets channel to value in the grayscale data array, #cube_GSData.
     \param channel (0 to #NUM_TLCS * 16 - 1).  OUT0 of the first TLC is
@@ -468,55 +426,53 @@ void LEDCube::set(int channel, int layer, int value)
 	unsigned int index32 = (NUM_TLCS * 16 - 1) - channel;
 
 	// index12p = index32 * 3 / 8 = the index into cube_GSData where a 32-bit elment exists that will hold our 12-bit value
-	unsigned int *index12p = cube_GSData[layer] + ((index32 * 3) >> 3);
+	unsigned int *index12p = cube_GSData + ((LAYER_GSDATA * layer) + ((index32 * 3) >> 3));
 
-	// caseNum  = index32 mod 8 = which of the 8 possible cases we need to handle
-	int caseNum = index32 % 8;
-
-	switch(caseNum){
+	// index32 mod 8 = which of the 8 possible cases we need to handle
+	switch(index32 % 8){
 		case 0:	// A: 12 bits start at the beginning of the element
 
 			// zero out the 12 bits and OR those bits with the value
-			*index12p = (*index12p & 0x000FFFFF) | value << 20;
+			*index12p = ((*index12p & 0x000FFFFF) | (value << 20));
 			break;
 		case 1:	// B: 12 bits start 12 bits into the element
 
 			// zero out the 12 bits and OR those bits with the value
-			*index12p = (*index12p & 0xFFF000FF) | value << 8;
+			*index12p = ((*index12p & 0xFFF000FF) | (value << 8));
 			break;
 		case 2:	// C: 12 bits start 24 bits into the element and continue 4 bits into the next
 
 			// zero out the 8 bits that are in this element and OR them with the 8 MSB bits of value
-			*index12p = (*index12p & 0xFFFFFF00) | value >> 4;
+			*index12p = ((*index12p & 0xFFFFFF00) | (value >> 4));
 
 			// move to the next element, and zero out the remaining 4 bits, then OR them with the remaining 4 bits of value
 			index12p++;
-			*index12p = (*index12p & 0x0FFFFFFF) | value << 28;
+			*index12p = ((*index12p & 0x0FFFFFFF) | (value << 28));
 			break;
 		case 3:	// D: 12 bits start 4 bits into the element
 
 			// zero out the 12 bits and OR those bits with the value
-			*index12p = (*index12p & 0xF000FFFF) | value << 16; 			
+			*index12p = ((*index12p & 0xF000FFFF) | (value << 16)); 			
 			break;
 		case 4: // E: 12 bits start 16 bits into the element
 
 			// zero out the 12 bits and OR those bits with the value
-			*index12p = (*index12p & 0xFFFF000F) | value << 4;
+			*index12p = ((*index12p & 0xFFFF000F) | (value << 4));
 			break;
 		case 5:	// F: 12 bits start 28 bits into the element and continue 8 bits into the next
 
 			// set the 4 bits that apply to this element
-			*index12p = (*index12p & 0xFFFFFFF0) | value >> 8;
+			*index12p = ((*index12p & 0xFFFFFFF0) | (value >> 8));
 
 			// move to the next element, and set the appropriate bits
 			index12p++;
-			*index12p = (*index12p & 0x00FFFFFF) | value << 24;
+			*index12p = ((*index12p & 0x00FFFFFF) | (value << 24));
 			break;
 		case 6:	// G: 12 bits start 8 bits into the element
-			*index12p = (*index12p & 0xFF000FFF) | value << 12;
+			*index12p = ((*index12p & 0xFF000FFF) | (value << 12));
 			break;
 		case 7:	// H: 12 bits start 20 bits into the element
-			*index12p = (*index12p & 0xFFFFF000) | value;
+			*index12p = ((*index12p & 0xFFFFF000) | value);
 			break;
 	}
 }
@@ -527,7 +483,7 @@ void LEDCube::setAll(int value){
 		for (int _channel = 0; _channel < NUM_TLCS * 6; _channel++){
 		       set(_channel, _layer, value);
 		}
-	}
+	}	
 }
 
 int LEDCube::getNumTLCs() {
@@ -539,7 +495,7 @@ int LEDCube::getNumTLCs() {
 int LEDCube::get(int channel, int layer) {
 
 	unsigned int index32 = (NUM_TLCS * 16 - 1) - channel;
-	unsigned int *index12p = cube_GSData[layer] + ((index32 * 3) >> 3);
+	unsigned int *index12p = cube_GSData + ((LAYER_GSDATA * layer) + ((index32 * 3) >> 3));;
 	int caseNum = index32 % 8;
 	int value = 0x000;
 
@@ -577,15 +533,89 @@ int LEDCube::get(int channel, int layer) {
 }
 
 
-
 // RGB Helper functions
-#if RGB_LEDS
-void LEDCube::setVoxelSpectrumColor(int channel, int layer, int color) {
+#if RGB_LEDS 
+// RGB LEDs are connected to the TLC sequentially
+// i.e. ch 0 = B1, ch 1 = G1, ch 2 = R1, ch 3 = B2, ch 4 = G2, ch 5 = R2
+void LEDCube::setRGB(int channel, int layer, int red, int green, int blue) {
 	if((layer < 0) || (layer >= CUBE_SIZE)) return;
 	if((channel < 0) || (channel >= RGB_CHANNELS)) return;
-	if((color < 0) || (layer >= NUM_COLORS)) return;
+	
+	unsigned int index32 = (RGB_CHANNELS - 1) - channel;
 
-	unsigned int red, green, blue;
+	// index36p = index32 * 9 / 8 = the index into cube_GSData 
+	// where a 32-bit elment exists that will hold part our 36-bit value
+	unsigned int *index36p = cube_GSData + ((LAYER_GSDATA * layer) + ((index32 * 9) >> 3));
+
+	switch(index32 % 8) {
+		case 0:	// A:
+
+			*index36p = ((*index36p & 0x00000000) | red << 20 | green << 8 | blue >> 4);
+			index36p++;
+			*index36p = ((*index36p & 0x0FFFFFFF) | blue << 28);
+			break;
+		case 1:	// B:
+
+			*index36p = ((*index36p & 0xF0000000) | red << 16 | green << 4 | blue >> 8);
+			index36p++;
+			*index36p = ((*index36p & 0x00FFFFFF) | blue << 24);
+			break;
+		case 2:	// C:
+
+			*index36p = ((*index36p & 0xFF000000) | red << 12 | green);
+			index36p++;
+			*index36p = ((*index36p & 0x000FFFFF) | blue << 20);
+			break;
+		case 3:	// D:
+
+			*index36p = ((*index36p & 0xFFF00000) | red << 8 | green >> 4);
+			index36p++;
+			*index36p = ((*index36p & 0x0000FFFF) | green << 28 | blue << 16);		
+			break;
+		case 4: // E:
+
+			*index36p = ((*index36p & 0xFFFF0000) | red << 4 | green >> 8);
+			index36p++;
+			*index36p = ((*index36p & 0x00000FFF) | green << 24 | blue << 12);
+			break;
+		case 5:	// F:
+
+			*index36p = ((*index36p & 0xFFFFF000) | red);
+			index36p++;
+			*index36p = ((*index36p & 0x000000FF) | green << 20 | blue << 8);
+			break;
+		case 6:	// G:
+
+			*index36p = ((*index36p & 0xFFFFFF00) | red >> 4);
+			index36p++;
+			*index36p = ((*index36p & 0x0000000F) | red << 28 | green << 16 | blue << 4);
+			break;
+		case 7:	// H:
+
+			*index36p = ((*index36p & 0xFFFFFFF0) | red >> 8);
+			index36p++;
+			*index36p = ((*index36p & 0x00000000) | red << 24 | green << 12 | blue);
+			break;
+	}
+}
+
+void LEDCube::setAllRGB(int red, int green, int blue){
+	for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
+		for (int _channel = 0; _channel < RGB_CHANNELS; _channel++) {
+		       setRGB(_channel, _layer, red, green, blue);
+		}
+	}
+}
+
+void LEDCube::setAllRGBOnLayer(int layer, int red, int green, int blue) {
+		for (int _channel = 0; _channel < RGB_CHANNELS; _channel++){
+		       setRGB(_channel, layer, red, green, blue);
+		}
+}
+
+void LEDCube::setVoxelSpectrumColor(int channel, int layer, int color) {
+	if((color < 0) || (layer >= NUM_COLORS)) return;
+	int red, green, blue;
 
 	if (color == 0) {
 	    red =  0;                 // Color 0 will turn LED off
@@ -604,90 +634,7 @@ void LEDCube::setVoxelSpectrumColor(int channel, int layer, int color) {
       green =  0;                      // green is always off
       blue  =  4095 - (color - 8192);  // blue on to off
     }
-
-	unsigned int index32 = (RGB_CHANNELS - 1) - channel;
-
-	// index36p = index32 * 9 / 8 = the index into cube_GSData 
-	// where a 32-bit elment exists that will hold part our 36-bit value
-	unsigned int *index36p = cube_GSData[layer]+ ((index32 * 9) >> 3);
-
-	// caseNum  = index32 mod 8 = which of the 8 possible cases we need to handle
-	int caseNum = index32 % 8;
-
-		switch(caseNum) {
-			case 0:	// A:
-
-				*index36p = ((*index36p & 0x00000000) | red << 20 | green << 8 | blue >> 4);
-				index36p++;
-				*index36p = ((*index36p & 0x0FFFFFFF) | blue << 28);
-				break;
-			case 1:	// B:
-
-				*index36p = ((*index36p & 0xF0000000) | red << 16 | green << 4 | blue >> 8);
-				index36p++;
-				*index36p = ((*index36p & 0x00FFFFFF) | blue << 24);
-				break;
-			case 2:	// C:
-
-				*index36p = ((*index36p & 0xFF000000) | red << 12 | green);
-				index36p++;
-				*index36p = ((*index36p & 0x000FFFFF) | blue << 20);
-				break;
-			case 3:	// D:
-
-				*index36p = ((*index36p & 0xFFF00000) | red << 8 | green >> 4);
-				index36p++;
-				*index36p = ((*index36p & 0x0000FFFF) | green << 28 | blue << 16);		
-				break;
-			case 4: // E:
-
-				*index36p = ((*index36p & 0xFFFF0000) | red << 4 | green >> 8);
-				index36p++;
-				*index36p = ((*index36p & 0x00000FFF) | green << 24 | blue << 12);
-				break;
-			case 5:	// F:
-
-				*index36p = ((*index36p & 0xFFFFF000) | red);
-				index36p++;
-				*index36p = ((*index36p & 0x000000FF) | green << 20 | blue << 8);
-				break;
-			case 6:	// G:
-
-				*index36p = ((*index36p & 0xFFFFFF00) | red >> 4);
-				index36p++;
-				*index36p = ((*index36p & 0x0000000F) | red << 28 | green << 16 | blue << 4);
-				break;
-			case 7:	// H:
-
-				*index36p = ((*index36p & 0xFFFFFFF0) | red >> 8);
-				index36p++;
-				*index36p = ((*index36p & 0x00000000) | red << 24 | green << 12 | blue);
-				break;
-		}
-}
-
-void LEDCube::setAllRGB(int red, int green, int blue){
-	for(int _layer = 0; _layer < CUBE_SIZE; _layer++) {
-		for (int _channel = 0; _channel < RGB_CHANNELS; _channel++) {
-		       setRGB(_layer, _channel, red, green, blue);
-		}
-	}
-}
-
-void LEDCube::setAllRGBOnLayer(int layer, int red, int green, int blue) {
-		for (int _channel = 0; _channel < RGB_CHANNELS; _channel++){
-		       setRGB(layer, _channel, red, green, blue);
-		}
-}
-
-// RGB LEDs are connected to the TLC sequentially
-// i.e. ch 0 = B1, ch 1 = G1, ch 2 = R1, ch 3 = B2, ch 4 = G2, ch 5 = R2
-void LEDCube::setRGB(int channel, int layer, int r, int g, int b) {
-	int tlc_channel = channel * 3;
-
-	set(tlc_channel++, layer, b);
-	set(tlc_channel++, layer, g);
-	set(tlc_channel, layer, r);
+    setRGB(channel, layer, red, green, blue);
 }
 
 // Each RGB LED is connected to multiple TLCs.

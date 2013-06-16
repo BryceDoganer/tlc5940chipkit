@@ -30,6 +30,7 @@ class LEDCube
 {
   public:
 	void init(int initialValue = 0);
+	unsigned int* getGSData(void);
 	void clearAll(void);
 	int clearLayer(int layer);
 	int update(void);
